@@ -1,8 +1,6 @@
 name: Notify Post Author on Comment
 
 on:
-  issues:
-    types: [opened]
   issue_comment:
     types: [created]
 
