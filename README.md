@@ -10,9 +10,13 @@
    - tech-blog-comment의 Issue 제목에서 포스트 정보 추출
    - `oy-alldev/oliveyoung-tech-blog` 저장소에서 포스트 파일 찾기
    - member.yaml에서 작성자의 GitHub 계정 확인
-4. **`oy-alldev/oliveyoung-tech-blog` 저장소에 알림**
+4. **🤖 AI 댓글 분석** (선택 기능, GEMINI_API_KEY 설정 시)
+   - Gemini AI를 사용하여 댓글 자동 분류
+   - 적절한 답변 2-3가지 자동 생성
+5. **`oy-alldev/oliveyoung-tech-blog` 저장소에 알림**
    - 해당 포스트에 대한 알림 Issue가 **이미 있으면** → 기존 Issue에 댓글 추가
    - 알림 Issue가 **없으면** → 새 Issue 생성 (작성자 멘션 포함)
+   - AI 분석 결과 포함 (분류, 요약, 추천 답변)
 
 ## 로컬 테스트
 
@@ -84,6 +88,9 @@ export GITHUB_TOKEN=your_github_token_here
 export ENABLE_NOTIFICATION=true
 export ISSUE_NUMBER=1
 
+# AI 기능 테스트 (선택)
+export GEMINI_API_KEY=your_gemini_api_key_here
+
 # 스크립트 실행
 node scripts/notify-author.js
 ```
@@ -91,6 +98,7 @@ node scripts/notify-author.js
 **요약:**
 - 🔓 **읽기 (oy-techblog/tech-blog-comment Issue)**: 토큰 불필요 (public 저장소)
 - 🔒 **쓰기 (oy-alldev/oliveyoung-tech-blog Issue 생성)**: 토큰 필요 + `ENABLE_NOTIFICATION=true`
+- 🤖 **AI 분석 (선택)**: `GEMINI_API_KEY` 설정 시 활성화
 
 **두 개의 저장소:**
 1. `oy-techblog/tech-blog-comment` - utterances가 댓글을 Issue로 저장 (읽기만, 토큰 불필요)
@@ -136,7 +144,7 @@ workspace/
 3. "New repository secret" 클릭
 4. 다음 Secret 추가:
 
-**`TECH_BLOG_ACCESS_TOKEN`**
+**`TECH_BLOG_ACCESS_TOKEN`** (필수)
 - **설명**: oliveyoung-tech-blog 저장소 접근 및 Issue 생성을 위한 Personal Access Token
 - **생성 방법**:
   1. GitHub Settings > Developer settings > Personal access tokens > Tokens (classic)
@@ -148,6 +156,17 @@ workspace/
   1. oliveyoung-tech-blog 저장소 체크아웃 (포스트/member.yaml 읽기)
   2. oliveyoung-tech-blog 저장소에서 기존 알림 Issue 검색
   3. oliveyoung-tech-blog에 알림 Issue 생성 또는 댓글 추가
+
+**`GEMINI_API_KEY`** (선택, AI 기능용)
+- **설명**: Google Gemini API 키 (댓글 분석 및 답변 추천 기능)
+- **생성 방법**:
+  1. [Google AI Studio](https://aistudio.google.com/app/apikey) 접속
+  2. "Create API Key" 클릭
+  3. 생성된 API 키를 Secret에 저장
+- **용도**:
+  1. 댓글 자동 분류 (질문/피드백/감사/토론 등)
+  2. AI 기반 답변 추천 (2-3가지 답변 제안)
+- **참고**: API 키가 없어도 알림 시스템은 정상 작동하며, AI 분석 기능만 비활성화됩니다.
 
 **참고:**
 - tech-blog-comment는 public 저장소이므로 Issue 읽기에 토큰이 필요없습니다.

@@ -38,6 +38,7 @@ jobs:
       - name: Find author and notify
         env:
           GITHUB_TOKEN: ${{ secrets.TECH_BLOG_ACCESS_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.TECH_BLOG_ACCESS_TOKEN }}
