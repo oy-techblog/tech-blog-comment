@@ -10,7 +10,7 @@ jobs:
   notify-author:
     runs-on: ubuntu-latest
     permissions:
-      issues: write
+      issues: read  # tech-blog-comment Issue 읽기용
 
     steps:
       - name: Check if this is a bot comment (avoid infinite loop)
@@ -19,7 +19,10 @@ jobs:
           echo "Skipping bot comment to avoid infinite loop"
           exit 0
 
-      - name: Checkout tech-blog repo
+      - name: Checkout tech-blog-comment repo
+        uses: actions/checkout@v4
+
+      - name: Checkout oliveyoung-tech-blog repo
         uses: actions/checkout@v4
         with:
           repository: oy-alldev/oliveyoung-tech-blog
@@ -32,131 +35,14 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm install js-yaml
+        run: npm install
 
       - name: Find author and notify
+        env:
+          GITHUB_TOKEN: ${{ secrets.TECH_BLOG_ACCESS_TOKEN }}
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.TECH_BLOG_ACCESS_TOKEN }}
           script: |
-            const yaml = require('js-yaml');
-            const fs = require('fs');
-            const path = require('path');
-
-            console.log('=== Starting Author Notification Process ===');
-
-            // Issue 제목 확인
-            const issueTitle = context.payload.issue.title;
-            console.log('Issue Title:', issueTitle);
-
-            // utterances는 페이지 URL을 Issue 제목으로 사용
-            // 예: "https://oliveyoung.tech/blog/2025-07-22-what-is-MFE-part1/"
-
-            // 날짜-slug 패턴 추출 (YYYY-MM-DD-slug 또는 YYYY-MM-DD/slug)
-            const postPattern = /(\d{4}-\d{2}-\d{2})[-\/]([^\/\s?#]+)/;
-            const match = issueTitle.match(postPattern);
-
-            if (!match) {
-              console.log('❌ Could not extract post info from issue title');
-              console.log('Expected format: YYYY-MM-DD-slug or YYYY-MM-DD/slug');
-              return;
-            }
-
-            const [_, postDate, postSlug] = match;
-            console.log('✅ Extracted - Date:', postDate, 'Slug:', postSlug);
-
-            // tech-blog에서 해당 포스트 찾기
-            const dateFolder = `tech-blog/contents/${postDate}`;
-
-            if (!fs.existsSync(dateFolder)) {
-              console.log('❌ Post directory not found:', dateFolder);
-              return;
-            }
-
-            // 해당 날짜 폴더의 .md 파일 찾기
-            const mdFiles = fs.readdirSync(dateFolder).filter(f => f.endsWith('.md'));
-
-            if (mdFiles.length === 0) {
-              console.log('❌ No markdown files found in', dateFolder);
-              return;
-            }
-
-            console.log('📄 Found markdown files:', mdFiles);
-
-            // 첫 번째 .md 파일 읽기
-            const postPath = path.join(dateFolder, mdFiles[0]);
-            const postContent = fs.readFileSync(postPath, 'utf8');
-
-            // frontmatter에서 writer 추출
-            const frontmatterMatch = postContent.match(/^---\n([\s\S]*?)\n---/);
-            if (!frontmatterMatch) {
-              console.log('❌ No frontmatter found in post');
-              return;
-            }
-
-            const frontmatter = yaml.load(frontmatterMatch[1]);
-            const writerId = frontmatter.writer;
-
-            if (!writerId) {
-              console.log('❌ No writer field in frontmatter');
-              return;
-            }
-
-            console.log('✅ Post writer ID:', writerId);
-
-            // member.yaml에서 작성자 정보 찾기
-            const memberYamlPath = 'tech-blog/src/templates/Post/member.yaml';
-
-            if (!fs.existsSync(memberYamlPath)) {
-              console.log('❌ member.yaml not found at', memberYamlPath);
-              return;
-            }
-
-            const memberYaml = fs.readFileSync(memberYamlPath, 'utf8');
-            const members = yaml.load(memberYaml);
-
-            const author = members.find(m => m && m.id === writerId);
-
-            if (!author) {
-              console.log('❌ Author not found in member.yaml for ID:', writerId);
-              return;
-            }
-
-            console.log('✅ Author found:', author.name);
-
-            // GitHub username 확인
-            if (!author.github) {
-              console.log('⚠️  No GitHub username found for author:', author.name);
-              console.log('Please add "github: username" field to member.yaml');
-              return;
-            }
-
-            console.log('✅ Author GitHub username:', author.github);
-
-            // 댓글 작성자 정보
-            const commenter = context.payload.comment?.user.login || context.payload.issue.user.login;
-            const commentUrl = context.payload.comment?.html_url || context.payload.issue.html_url;
-            const isNewIssue = !context.payload.comment; // 첫 댓글인지 확인
-
-            // 알림 메시지 작성
-            const emoji = isNewIssue ? '🎉' : '💬';
-            const action = isNewIssue ? '새로운 댓글이 달렸습니다' : '댓글이 추가되었습니다';
-
-            const message = `${emoji} @${author.github} 님, [${action}](${commentUrl})!
-
-**작성자:** @${commenter}
-**포스트:** ${frontmatter.title || 'Untitled'}
-
----
-_This notification was automatically generated by GitHub Actions_`;
-
-            // 댓글 작성
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
-              body: message
-            });
-
-            console.log('✅ Notification sent successfully to @' + author.github);
-            console.log('=== Process Completed ===');
+            const { notifyAuthor } = require('./scripts/notify-author.js');
+            await notifyAuthor(context, github);
