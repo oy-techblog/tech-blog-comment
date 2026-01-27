@@ -15,6 +15,43 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
  */
 
 /**
+ * GitHub GraphQL API를 사용하여 댓글 숨김 처리
+ */
+async function hideComment(github, commentNodeId) {
+  try {
+    console.log('🚫 Hiding toxic comment...');
+
+    const mutation = `
+      mutation {
+        minimizeComment(input: {
+          subjectId: "${commentNodeId}",
+          classifier: SPAM
+        }) {
+          minimizedComment {
+            isMinimized
+            minimizedReason
+          }
+        }
+      }
+    `;
+
+    const result = await github.graphql(mutation);
+
+    if (result.minimizedComment?.isMinimized) {
+      console.log('✅ Comment successfully hidden');
+      return true;
+    } else {
+      console.log('⚠️  Comment hide request sent but status unknown');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Failed to hide comment:', error.message);
+    // 숨김 실패해도 알림은 계속 진행
+    return false;
+  }
+}
+
+/**
  * Gemini API를 사용하여 댓글 분석 및 추천 답변 생성
  */
 async function analyzeCommentWithAI(commentBody, postTitle) {
@@ -31,7 +68,7 @@ async function analyzeCommentWithAI(commentBody, postTitle) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
-    const prompt = `당신은 기술 블로그의 댓글을 분석하고 적절한 답변을 추천하는 AI 어시스턴트입니다.
+    const prompt = `당신은 기술 블로그의 댓글을 분석하고 모더레이션하는 AI 어시스턴트입니다.
 
 블로그 포스트 제목: "${postTitle}"
 
@@ -42,22 +79,52 @@ ${commentBody}
 
 다음 작업을 수행해주세요:
 
-1. **댓글 분류**: 이 댓글의 유형을 판단하세요.
-   - 질문 (Question): 기술적 질문이나 궁금한 점
-   - 피드백 (Feedback): 의견, 제안, 개선사항
-   - 감사 (Appreciation): 칭찬이나 감사 표현
-   - 토론 (Discussion): 기술적 논의나 의견 공유
-   - 기타 (Other): 위 카테고리에 속하지 않는 경우
+1. **댓글 톤 분석**
+   - sentiment: positive(긍정적) / neutral(중립적) / negative(부정적) / hostile(적대적)
+   - toxicity_level: 0-5 점수 부여
+     * 0: 매우 건전한 댓글
+     * 1: 건전하며 건설적
+     * 2: 부정적이지만 예의 있음
+     * 3: 무례하거나 비꼬는 표현 포함
+     * 4: 욕설, 비하, 인신공격 포함
+     * 5: 심각한 위협, 혐오 표현 포함
+   - requires_moderation: 모더레이션이 필요한지 여부 (toxicity_level >= 3이면 true)
 
-2. **추천 답변**: 작성자가 사용할 수 있는 적절한 답변을 2-3가지 제안해주세요.
-   - 친절하고 전문적인 톤 유지
-   - 기술 블로그 커뮤니티에 적합한 답변
-   - 각 답변은 2-3문장 정도로 간결하게
+2. **문제 요소 탐지** (해당되는 것만 배열에 포함)
+   - profanity: 욕설/비속어 사용
+   - personal_attack: 작성자나 특정인에 대한 인신공격
+   - trolling: 악의적 도발이나 분란 조장
+   - disrespectful: 무례하고 비하적인 표현
+   - hate_speech: 혐오 표현
+   - spam: 스팸이나 관련 없는 광고
+   - off_topic: 주제와 무관한 내용
+
+3. **댓글 분류**
+   - Question: 기술적 질문
+   - Feedback: 건설적 피드백/제안
+   - Appreciation: 칭찬이나 감사
+   - Discussion: 기술적 논의
+   - Criticism: 날카로운 비판 (예의는 지킴)
+   - Hostile: 공격적이거나 모욕적인 댓글
+   - Spam: 스팸/광고
+
+4. **모더레이션 조언** (toxicity_level >= 3일 때만)
+   - 어떤 문제가 있는지
+   - 권장 조치 방법
+
+5. **추천 답변**: 댓글에 적절한 답변 2-3가지 제안
+   - 건전한 댓글: 친절하고 전문적인 답변
+   - 공격적 댓글: 간단한 가이드라인 안내 또는 무시 권장
 
 응답 형식 (JSON):
 {
-  "category": "댓글 유형 (Question/Feedback/Appreciation/Discussion/Other)",
+  "category": "Question/Feedback/Appreciation/Discussion/Criticism/Hostile/Spam",
+  "sentiment": "positive/neutral/negative/hostile",
+  "toxicity_level": 0-5,
+  "requires_moderation": true/false,
+  "concerns": ["profanity", "personal_attack", ...],
   "summary": "댓글 요약 (한 문장)",
+  "moderation_advice": "모더레이션 조언 (toxicity_level >= 3일 때만)",
   "suggestions": [
     "추천 답변 1",
     "추천 답변 2",
@@ -75,6 +142,12 @@ ${commentBody}
       const analysis = JSON.parse(jsonMatch[0]);
       console.log('✅ AI analysis completed');
       console.log('   Category:', analysis.category);
+      console.log('   Sentiment:', analysis.sentiment);
+      console.log('   Toxicity Level:', analysis.toxicity_level);
+      console.log('   Requires Moderation:', analysis.requires_moderation);
+      if (analysis.concerns && analysis.concerns.length > 0) {
+        console.log('   Concerns:', analysis.concerns.join(', '));
+      }
       return analysis;
     } else {
       console.log('⚠️  Could not parse AI response');
@@ -202,14 +275,101 @@ async function notifyAuthor(context, github) {
   // AI 댓글 분석
   const aiAnalysis = await analyzeCommentWithAI(commentBody, frontmatter.title);
 
-  // 알림 메시지 작성
+  // 관리자 계정
+  const MODERATORS = ['oy-ladygain', 'oy-0nlyoung7'];
+
+  // level 4+ 악성 댓글 자동 숨김 처리
+  const commentNodeId = context.payload.comment?.node_id || context.payload.issue.node_id;
+  let commentHidden = false;
+
+  if (aiAnalysis && aiAnalysis.toxicity_level >= 4) {
+    console.log(`⚠️  High toxicity detected (level ${aiAnalysis.toxicity_level}), attempting to hide comment...`);
+    commentHidden = await hideComment(github, commentNodeId);
+  }
+
+  // toxicity level에 따라 알림 메시지 분기
+  let notificationTitle, notificationBody, labels;
   const emoji = isNewIssue ? '🎉' : '💬';
   const action = isNewIssue ? '새로운 댓글이 달렸습니다' : '댓글이 추가되었습니다';
 
-  // AI 분석 결과 포맷팅
-  let aiSection = '';
-  if (aiAnalysis) {
-    aiSection = `
+  if (aiAnalysis && aiAnalysis.toxicity_level >= 3) {
+    // Level 3+ 모더레이션 필요 알림
+    const toxicityEmoji = aiAnalysis.toxicity_level >= 4 ? '🚨' : '⚠️';
+    const severityLabel = aiAnalysis.toxicity_level >= 4 ? 'High' : 'Medium';
+
+    notificationTitle = `${toxicityEmoji} [모더레이션 필요] ${frontmatter.title || 'Untitled'} - 부적절한 댓글`;
+
+    notificationBody = `${toxicityEmoji} **모더레이션이 필요한 댓글이 감지되었습니다**
+
+**포스트:** [${frontmatter.title || 'Untitled'}](${commentUrl})
+**댓글 작성자:** ${commenter}
+**위험도:** Level ${aiAnalysis.toxicity_level} (${severityLabel})
+**문제점:** ${aiAnalysis.concerns?.join(', ') || 'N/A'}
+
+### 📋 댓글 내용
+> ${commentBody.split('\n').join('\n> ')}
+
+${commentHidden ? '✅ **이 댓글은 자동으로 숨김 처리되었습니다.**\n' : ''}
+---
+
+### 🤖 AI 분석 결과
+
+**분류:** ${aiAnalysis.category}
+**감정:** ${aiAnalysis.sentiment}
+**요약:** ${aiAnalysis.summary}
+
+**모더레이션 조언:**
+${aiAnalysis.moderation_advice || 'N/A'}
+
+---
+
+### 💡 권장 조치
+
+${aiAnalysis.toxicity_level >= 4 ? `
+**1️⃣ 즉시 조치 (권장)**
+- ${commentHidden ? '✅ 댓글이 이미 자동 숨김 처리되었습니다' : '⚠️ 댓글 숨김 처리를 권장합니다'}
+- 반복되는 경우 사용자 차단 고려
+- 심각한 경우 GitHub Abuse Report 검토
+
+**2️⃣ 답변하는 경우 (비권장)**
+- 간단히 커뮤니티 가이드라인만 안내
+- 감정적 대응 피하기
+
+**3️⃣ 무시 (가능)**
+- 답변하지 않고 숨김 처리만 유지
+` : `
+**1️⃣ 신중한 답변**
+- 기술적 논점만 간단히 응대
+- 전문적이고 중립적인 톤 유지
+- 논쟁으로 확대하지 않기
+
+**2️⃣ 가이드라인 안내**
+- "건설적인 피드백을 환영합니다"
+- 커뮤니티 가이드라인 링크 제공
+
+**3️⃣ 무시**
+- 댓글 숨김 후 답변하지 않기
+`}
+
+### 📚 참고 자료
+- [커뮤니티 가이드라인](https://github.com/oy-alldev/oliveyoung-tech-blog/blob/main/COMMUNITY_GUIDELINES.md)
+- [댓글 숨김 방법](https://docs.github.com/en/communities/moderating-comments-and-conversations/managing-disruptive-comments#hiding-a-comment)
+- [사용자 차단 방법](https://docs.github.com/en/communities/maintaining-your-safety-on-github/blocking-a-user-from-your-organization)
+
+---
+
+**작성자:** @${author.github}
+**관리자:** ${MODERATORS.map(m => `@${m}`).join(', ')}
+
+_이 알림은 GitHub Actions에 의해 자동 생성되었습니다_`;
+
+    labels = ['notification', 'moderation', aiAnalysis.toxicity_level >= 4 ? 'urgent' : 'warning'];
+
+  } else {
+    // 일반 알림 (toxicity level 0-2)
+    let aiSection = '';
+    if (aiAnalysis) {
+      aiSection = `
 
 ---
 
@@ -220,10 +380,10 @@ async function notifyAuthor(context, github) {
 
 **추천 답변:**
 ${aiAnalysis.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
-  }
+    }
 
-  const notificationTitle = `[알림] ${frontmatter.title || 'Untitled'} - 새 댓글`;
-  const notificationBody = `${emoji} @${author.github} 님, 작성하신 포스트에 [${action}](${commentUrl})!
+    notificationTitle = `[알림] ${frontmatter.title || 'Untitled'} - 새 댓글`;
+    notificationBody = `${emoji} @${author.github} 님, 작성하신 포스트에 [${action}](${commentUrl})!
 
 **포스트:** ${frontmatter.title || 'Untitled'}
 **댓글 작성자:** ${commenter}
@@ -232,7 +392,10 @@ ${aiAnalysis.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
 > ${commentBody.split('\n').join('\n> ')}${aiSection}
 
 ---
-_This notification was automatically generated by GitHub Actions_`;
+_이 알림은 GitHub Actions에 의해 자동 생성되었습니다_`;
+
+    labels = ['notification', 'comment'];
+  }
 
   // oliveyoung-tech-blog 저장소에서 기존 알림 Issue 찾기
   const techBlogOwner = process.env.TECH_BLOG_OWNER || 'oy-alldev';
@@ -253,12 +416,68 @@ _This notification was automatically generated by GitHub Actions_`;
       const existingIssue = searchResults.items[0];
       console.log('✅ Found existing notification issue:', existingIssue.html_url);
 
-      const newCommentBody = `${emoji} 새로운 댓글이 추가되었습니다: [보기](${commentUrl})
+      let newCommentBody;
+
+      if (aiAnalysis && aiAnalysis.toxicity_level >= 3) {
+        // 모더레이션 필요 댓글
+        const toxicityEmoji = aiAnalysis.toxicity_level >= 4 ? '🚨' : '⚠️';
+        const severityLabel = aiAnalysis.toxicity_level >= 4 ? 'High' : 'Medium';
+
+        newCommentBody = `${toxicityEmoji} **부적절한 댓글이 추가되었습니다**: [보기](${commentUrl})
+
+**댓글 작성자:** ${commenter}
+**위험도:** Level ${aiAnalysis.toxicity_level} (${severityLabel})
+**문제점:** ${aiAnalysis.concerns?.join(', ') || 'N/A'}
+
+### 📋 댓글 내용
+> ${commentBody.split('\n').join('\n> ')}
+
+${commentHidden ? '✅ **이 댓글은 자동으로 숨김 처리되었습니다.**' : ''}
+
+### 🤖 AI 분석
+**분류:** ${aiAnalysis.category} | **감정:** ${aiAnalysis.sentiment}
+**요약:** ${aiAnalysis.summary}
+
+${aiAnalysis.moderation_advice ? `**조언:** ${aiAnalysis.moderation_advice}` : ''}
+
+---
+**관리자:** ${MODERATORS.map(m => `@${m}`).join(', ')}`;
+
+        // 기존 Issue에 moderation 라벨 추가
+        const currentLabels = existingIssue.labels.map(l => typeof l === 'string' ? l : l.name);
+        const newLabels = [...new Set([...currentLabels, 'moderation', aiAnalysis.toxicity_level >= 4 ? 'urgent' : 'warning'])];
+
+        await github.rest.issues.update({
+          owner: techBlogOwner,
+          repo: techBlogRepo,
+          issue_number: existingIssue.number,
+          labels: newLabels
+        });
+
+      } else {
+        // 일반 댓글
+        let aiSection = '';
+        if (aiAnalysis) {
+          aiSection = `
+
+---
+
+### 🤖 AI 댓글 분석
+
+**분류:** ${aiAnalysis.category}
+**요약:** ${aiAnalysis.summary}
+
+**추천 답변:**
+${aiAnalysis.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
+        }
+
+        newCommentBody = `${emoji} 새로운 댓글이 추가되었습니다: [보기](${commentUrl})
 
 **댓글 작성자:** ${commenter}
 
 **댓글 내용:**
 > ${commentBody.split('\n').join('\n> ')}${aiSection}`;
+      }
 
       await github.rest.issues.createComment({
         owner: techBlogOwner,
@@ -277,7 +496,7 @@ _This notification was automatically generated by GitHub Actions_`;
         repo: techBlogRepo,
         title: notificationTitle,
         body: notificationBody,
-        labels: ['notification', 'comment']
+        labels: labels
       });
 
       console.log('✅ Notification issue created successfully in', `${techBlogOwner}/${techBlogRepo}`);
