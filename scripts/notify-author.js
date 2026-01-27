@@ -448,11 +448,23 @@ _이 알림은 GitHub Actions에 의해 자동 생성되었습니다_`;
 
   console.log('🔍 Checking for existing notification issue...');
 
+  // 알림 Issue 생성을 위한 별도 Octokit 인스턴스 (TECH_BLOG_ACCESS_TOKEN 사용)
+  // github 객체는 기본 GITHUB_TOKEN을 사용하므로 다른 조직에 접근 불가
+  const { Octokit } = require('@octokit/rest');
+  const techBlogToken = process.env.TECH_BLOG_ACCESS_TOKEN;
+
+  if (!techBlogToken) {
+    console.error('❌ TECH_BLOG_ACCESS_TOKEN not found');
+    throw new Error('TECH_BLOG_ACCESS_TOKEN is required for creating notification issues');
+  }
+
+  const techBlogGithub = new Octokit({ auth: techBlogToken });
+
   // 같은 포스트에 대한 알림 Issue 검색
   const searchQuery = `repo:${techBlogOwner}/${techBlogRepo} is:issue is:open label:notification "${frontmatter.title}"`;
 
   try {
-    const { data: searchResults } = await github.rest.search.issuesAndPullRequests({
+    const { data: searchResults } = await techBlogGithub.rest.search.issuesAndPullRequests({
       q: searchQuery
     });
 
@@ -492,7 +504,7 @@ ${aiAnalysis.moderation_advice ? `**조언:** ${aiAnalysis.moderation_advice}` :
         const currentLabels = existingIssue.labels.map(l => typeof l === 'string' ? l : l.name);
         const newLabels = [...new Set([...currentLabels, 'moderation', aiAnalysis.toxicity_level >= 4 ? 'urgent' : 'warning'])];
 
-        await github.rest.issues.update({
+        await techBlogGithub.rest.issues.update({
           owner: techBlogOwner,
           repo: techBlogRepo,
           issue_number: existingIssue.number,
@@ -524,7 +536,7 @@ ${aiAnalysis.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
 > ${commentBody.split('\n').join('\n> ')}${aiSection}`;
       }
 
-      await github.rest.issues.createComment({
+      await techBlogGithub.rest.issues.createComment({
         owner: techBlogOwner,
         repo: techBlogRepo,
         issue_number: existingIssue.number,
@@ -536,7 +548,7 @@ ${aiAnalysis.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
       // 기존 Issue가 없으면 새로 생성
       console.log('📝 No existing issue found, creating new one...');
 
-      await github.rest.issues.create({
+      await techBlogGithub.rest.issues.create({
         owner: techBlogOwner,
         repo: techBlogRepo,
         title: notificationTitle,
@@ -569,12 +581,12 @@ async function main() {
 
     // oliveyoung-tech-blog에 Issue 생성용 (토큰 필요)
     let octokitAuth = null;
-    if (process.env.GITHUB_TOKEN) {
-      const token = process.env.GITHUB_TOKEN.trim();
-      octokitAuth = new Octokit({ auth: token });
-      console.log('✅ GITHUB_TOKEN configured');
+    const token = process.env.TECH_BLOG_ACCESS_TOKEN || process.env.GITHUB_TOKEN;
+    if (token) {
+      octokitAuth = new Octokit({ auth: token.trim() });
+      console.log('✅ TECH_BLOG_ACCESS_TOKEN configured');
     } else {
-      console.log('⚠️  GITHUB_TOKEN not set (dry-run mode)');
+      console.log('⚠️  TECH_BLOG_ACCESS_TOKEN not set (dry-run mode)');
     }
 
     // 현재 저장소 정보 (tech-blog-comment)
@@ -639,7 +651,7 @@ async function main() {
             console.log(body);
             console.log('---');
 
-            // 실제로 Issue를 생성하려면 GITHUB_TOKEN 설정 후 ENABLE_NOTIFICATION=true
+            // 실제로 Issue를 생성하려면 TECH_BLOG_ACCESS_TOKEN 설정 후 ENABLE_NOTIFICATION=true
             if (octokitAuth && process.env.ENABLE_NOTIFICATION === 'true') {
               console.log('\n✅ Creating issue on GitHub...');
               return await octokitAuth.rest.issues.create({
@@ -652,7 +664,7 @@ async function main() {
             } else {
               console.log('\n⚠️  Dry-run mode: Issue not created.');
               if (!octokitAuth) {
-                console.log('Missing: GITHUB_TOKEN (required for creating issues in oliveyoung-tech-blog)');
+                console.log('Missing: TECH_BLOG_ACCESS_TOKEN (required for creating issues in oliveyoung-tech-blog)');
               }
               if (process.env.ENABLE_NOTIFICATION !== 'true') {
                 console.log('Missing: ENABLE_NOTIFICATION=true');

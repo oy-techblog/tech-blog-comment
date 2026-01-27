@@ -92,7 +92,7 @@ ISSUE_NUMBER=1 node scripts/notify-author.js
 
 ```bash
 # 토큰은 쓰기(Issue 생성)에만 사용됨
-export GITHUB_TOKEN=your_github_token_here
+export TECH_BLOG_ACCESS_TOKEN=your_github_token_here
 export ENABLE_NOTIFICATION=true
 export ISSUE_NUMBER=1
 
@@ -210,7 +210,7 @@ https://oliveyoung.tech/blog/2025-07-22-what-is-MFE-part1/
 1. `oliveyoung-tech-blog` 저장소가 올바른 위치에 있는지 확인 (../oliveyoung-tech-blog)
 2. `oy-techblog/tech-blog-comment` 저장소의 테스트할 Issue가 실제로 존재하는지 확인
 3. Issue 제목이 올바른 형식인지 확인 (포스트 URL 포함)
-4. 실제 Issue 생성 시에만 `GITHUB_TOKEN`과 `ENABLE_NOTIFICATION=true` 필요
+4. 실제 Issue 생성 시에만 `TECH_BLOG_ACCESS_TOKEN`과 `ENABLE_NOTIFICATION=true` 필요
 5. 토큰은 `oy-alldev/oliveyoung-tech-blog` 저장소에 Issue를 생성할 권한이 있어야 함
 
 ## GitHub Actions Workflow
