@@ -15,7 +15,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
  */
 
 /**
- * GitHub GraphQL API를 사용하여 댓글 숨김 처리
+ * GitHub GraphQL API를 사용하여 댓글 숨김 처리 (Level 4용)
  */
 async function hideComment(github, commentNodeId) {
   try {
@@ -47,6 +47,38 @@ async function hideComment(github, commentNodeId) {
   } catch (error) {
     console.error('❌ Failed to hide comment:', error.message);
     // 숨김 실패해도 알림은 계속 진행
+    return false;
+  }
+}
+
+/**
+ * GitHub REST API를 사용하여 댓글 완전 삭제 (Level 5용)
+ */
+async function deleteComment(github, context) {
+  try {
+    console.log('🗑️  Deleting severely toxic comment...');
+
+    // Issue comment인 경우에만 삭제 가능
+    if (!context.payload.comment) {
+      console.log('⚠️  Cannot delete Issue body. Only reply comments can be deleted.');
+      return false;
+    }
+
+    const commentId = context.payload.comment.id;
+    const owner = context.repo.owner;
+    const repo = context.repo.repo;
+
+    await github.rest.issues.deleteComment({
+      owner,
+      repo,
+      comment_id: commentId
+    });
+
+    console.log('✅ Comment successfully deleted');
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to delete comment:', error.message);
+    // 삭제 실패해도 알림은 계속 진행
     return false;
   }
 }
@@ -278,24 +310,35 @@ async function notifyAuthor(context, github) {
   // 관리자 계정
   const MODERATORS = ['oy-ladygain', 'oy-0nlyoung7'];
 
-  // level 4+ 악성 댓글 자동 숨김 처리
+  // level 4+ 악성 댓글 자동 처리 (level 4: 숨김, level 5: 삭제)
   const commentNodeId = context.payload.comment?.node_id || context.payload.issue.node_id;
   const isComment = !!context.payload.comment;
   let commentHidden = false;
+  let commentDeleted = false;
 
   console.log(`📍 Comment type: ${isComment ? 'Reply comment' : 'Issue body (first comment)'}`);
   console.log(`📍 Node ID: ${commentNodeId}`);
 
   if (aiAnalysis && aiAnalysis.toxicity_level >= 4) {
-    console.log(`⚠️  High toxicity detected (level ${aiAnalysis.toxicity_level}), attempting to hide comment...`);
+    console.log(`⚠️  High toxicity detected (level ${aiAnalysis.toxicity_level})`);
 
     if (!isComment) {
-      console.log('⚠️  WARNING: This is an Issue body, not a reply comment. Issue bodies cannot be hidden via API.');
-      console.log('⚠️  Please hide it manually or wait for a reply comment.');
+      console.log('⚠️  WARNING: This is an Issue body, not a reply comment. Issue bodies cannot be moderated via API.');
+      console.log('⚠️  Please moderate it manually or wait for a reply comment.');
+    } else {
+      // Level 5: 즉시 삭제 (증거는 알림 Issue에 보존됨)
+      if (aiAnalysis.toxicity_level >= 5) {
+        console.log('🗑️  Level 5 detected - Attempting to DELETE comment permanently...');
+        commentDeleted = await deleteComment(github, context);
+        console.log(`📍 Delete result: ${commentDeleted ? 'SUCCESS' : 'FAILED'}`);
+      }
+      // Level 4: 숨김 처리
+      else {
+        console.log('🚫 Level 4 detected - Attempting to HIDE comment...');
+        commentHidden = await hideComment(github, commentNodeId);
+        console.log(`📍 Hide result: ${commentHidden ? 'SUCCESS' : 'FAILED'}`);
+      }
     }
-
-    commentHidden = await hideComment(github, commentNodeId);
-    console.log(`📍 Hide result: ${commentHidden ? 'SUCCESS' : 'FAILED'}`);
   }
 
   // toxicity level에 따라 알림 메시지 분기
@@ -320,7 +363,7 @@ async function notifyAuthor(context, github) {
 ### 📋 댓글 내용
 > ${commentBody.split('\n').join('\n> ')}
 
-${commentHidden ? '✅ **이 댓글은 자동으로 숨김 처리되었습니다.**\n' : ''}
+${commentDeleted ? '🗑️ **이 댓글은 자동으로 삭제되었습니다.** (증거는 이 알림에 보존됨)\n' : ''}${commentHidden ? '✅ **이 댓글은 자동으로 숨김 처리되었습니다.**\n' : ''}
 ---
 
 ### 🤖 AI 분석 결과
@@ -443,7 +486,7 @@ _이 알림은 GitHub Actions에 의해 자동 생성되었습니다_`;
 ### 📋 댓글 내용
 > ${commentBody.split('\n').join('\n> ')}
 
-${commentHidden ? '✅ **이 댓글은 자동으로 숨김 처리되었습니다.**' : ''}
+${commentDeleted ? '🗑️ **이 댓글은 자동으로 삭제되었습니다.** (증거는 이 알림에 보존됨)' : ''}${commentHidden ? '✅ **이 댓글은 자동으로 숨김 처리되었습니다.**' : ''}
 
 ### 🤖 AI 분석
 **분류:** ${aiAnalysis.category} | **감정:** ${aiAnalysis.sentiment}
