@@ -280,11 +280,22 @@ async function notifyAuthor(context, github) {
 
   // level 4+ 악성 댓글 자동 숨김 처리
   const commentNodeId = context.payload.comment?.node_id || context.payload.issue.node_id;
+  const isComment = !!context.payload.comment;
   let commentHidden = false;
+
+  console.log(`📍 Comment type: ${isComment ? 'Reply comment' : 'Issue body (first comment)'}`);
+  console.log(`📍 Node ID: ${commentNodeId}`);
 
   if (aiAnalysis && aiAnalysis.toxicity_level >= 4) {
     console.log(`⚠️  High toxicity detected (level ${aiAnalysis.toxicity_level}), attempting to hide comment...`);
+
+    if (!isComment) {
+      console.log('⚠️  WARNING: This is an Issue body, not a reply comment. Issue bodies cannot be hidden via API.');
+      console.log('⚠️  Please hide it manually or wait for a reply comment.');
+    }
+
     commentHidden = await hideComment(github, commentNodeId);
+    console.log(`📍 Hide result: ${commentHidden ? 'SUCCESS' : 'FAILED'}`);
   }
 
   // toxicity level에 따라 알림 메시지 분기
