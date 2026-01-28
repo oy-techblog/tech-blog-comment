@@ -290,13 +290,14 @@ async function notifyAuthor(context, github) {
   console.log('✅ Author found:', author.name);
 
   // GitHub username 확인
-  if (!author.github) {
-    console.log('⚠️  No GitHub username found for author:', author.name);
-    console.log('Please add "github: username" field to member.yaml');
-    return;
-  }
+  const hasGithubId = !!author.github;
 
-  console.log('✅ Author GitHub username:', author.github);
+  if (!hasGithubId) {
+    console.log('⚠️  No GitHub username found for author:', author.name);
+    console.log('⚠️  Will create fallback notification for moderators');
+  } else {
+    console.log('✅ Author GitHub username:', author.github);
+  }
 
   // 댓글 작성자 정보
   const commenter = context.payload.comment?.user.login || context.payload.issue.user.login;
@@ -337,7 +338,69 @@ async function notifyAuthor(context, github) {
   const emoji = isNewIssue ? '🎉' : '💬';
   const action = isNewIssue ? '새로운 댓글이 달렸습니다' : '댓글이 추가되었습니다';
 
-  if (aiAnalysis && aiAnalysis.toxicity_level >= 3) {
+  // GitHub ID 누락 시 Fallback 알림 생성
+  if (!hasGithubId) {
+    console.log('⚠️  Creating fallback notification for missing GitHub ID');
+
+    notificationTitle = `⚠️ [작성자 미매칭] ${frontmatter.title || 'Untitled'} - 새 댓글`;
+
+    let aiSection = '';
+    if (aiAnalysis) {
+      const toxicityWarning = aiAnalysis.toxicity_level >= 3
+        ? `\n\n⚠️ **Toxicity Level ${aiAnalysis.toxicity_level}** - 모더레이션이 필요할 수 있습니다.\n**문제점:** ${aiAnalysis.concerns?.join(', ') || 'N/A'}`
+        : '';
+
+      aiSection = `
+
+---
+
+### 🤖 AI 댓글 분석
+
+**분류:** ${aiAnalysis.category}
+**요약:** ${aiAnalysis.summary}${toxicityWarning}
+
+**추천 답변:**
+${aiAnalysis.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
+    }
+
+    notificationBody = `⚠️ **GitHub ID 미등록 작성자의 포스트에 댓글이 달렸습니다**
+
+**포스트:** [${frontmatter.title || 'Untitled'}](${commentUrl})
+**작성자:** ${author.name} (사번: ${writerId})
+**댓글 작성자:** ${commenter}
+
+---
+
+### 📋 댓글 내용
+> ${commentBody.split('\n').join('\n> ')}${aiSection}
+
+---
+
+### ⚠️ 조치 필요
+
+**문제:** \`member.yaml\`에 GitHub ID가 없어 작성자에게 직접 알림을 보낼 수 없습니다.
+
+**해결 방법:**
+1. \`oliveyoung-tech-blog/src/templates/Post/member.yaml\`에 다음 필드 추가:
+   \`\`\`yaml
+   - id: ${writerId}
+     name: ${author.name}
+     github: <username>  # 👈 추가 필요
+   \`\`\`
+
+2. 작성자에게 수동으로 댓글 알림 (Slack DM 또는 메일)
+
+3. 다음 댓글부터는 자동 알림 전송됨
+
+---
+
+**관리자:** ${MODERATORS.map(m => `@${m}`).join(', ')}
+
+_이 알림은 GitHub Actions에 의해 자동 생성되었습니다_`;
+
+    labels = ['notification', 'missing-github-id', 'action-required'];
+
+  } else if (aiAnalysis && aiAnalysis.toxicity_level >= 3) {
     // Level 3+ 모더레이션 필요 알림
     const toxicityEmoji = aiAnalysis.toxicity_level >= 4 ? '🚨' : '⚠️';
     const severityLabel = aiAnalysis.toxicity_level >= 4 ? 'High' : 'Medium';
