@@ -193,6 +193,51 @@ tech-blog 저장소의 `src/templates/Post/member.yaml`에 각 작성자의 GitH
   github: github-username  # 이 필드가 필요
 ```
 
+### 다국어 지원 (Language Support)
+
+시스템은 포스트 언어에 따라 알림 언어를 자동으로 선택합니다.
+
+**포스트 언어 설정**
+
+블로그 포스트의 frontmatter에 `language` 필드를 추가하세요:
+
+```yaml
+---
+date: 2025-02-14 10:00
+category: Product
+title: Global Mall Address Autocomplete Solution
+language: en  # 'ko' (한국어, 기본값) 또는 'en' (영어)
+writer: 836804
+thumbnail: img/thumbnail.png
+tags: ["global", "UX"]
+---
+```
+
+**동작 방식:**
+- `language: ko` 또는 필드 없음 → 한국어 알림 (기본값)
+- `language: en` → 영어 알림
+- 모든 알림 유형(일반, 모더레이션, fallback)이 언어에 맞게 생성됩니다
+- AI 댓글 분석도 포스트 언어로 수행됩니다
+
+**예시:**
+
+한국어 포스트 알림:
+```
+[알림] 포스트 제목 - 새 댓글
+💬 @작성자 님, 작성하신 포스트에 새로운 댓글이 달렸습니다!
+```
+
+영어 포스트 알림:
+```
+[Notification] Post Title - New Comment
+💬 @author, a comment was posted on your article!
+```
+
+**참고:**
+- 기존 포스트는 수정할 필요 없습니다 (자동으로 한국어로 처리됨)
+- 영어 포스트 작성 시에만 `language: en`을 추가하세요
+- 잘못된 언어 코드는 자동으로 한국어로 fallback됩니다
+
 ## 트러블슈팅
 
 ### Issue 제목 형식
