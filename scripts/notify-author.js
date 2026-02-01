@@ -8,6 +8,7 @@ const { formatAsBlockquote, formatModerators, getSeverityLabel, isModerationRequ
 const { getNotificationMessages } = require('./templates');
 const { deleteComment } = require('./github-api');
 const { analyzeCommentWithAI } = require('./ai-analyzer');
+const { recordMetrics } = require('./metrics');
 
 /**
  * GitHub Actions에서 호출되거나 로컬에서 테스트할 수 있는 알림 스크립트
@@ -434,6 +435,17 @@ ${aiAnalysis.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
 
       console.log('✅ Notification issue created successfully in', `${techBlogOwner}/${techBlogRepo}`);
     }
+
+    // 메트릭 기록
+    await recordMetrics(techBlogGithub, {
+      postTitle: frontmatter.title,
+      commenter,
+      notified: hasGithubId,
+      category: aiAnalysis?.category || null,
+      sentiment: aiAnalysis?.sentiment || null,
+      toxicityLevel: aiAnalysis?.toxicity_level ?? 0,
+      commentDeleted,
+    });
 
     console.log('✅ Author @' + author.github + ' will be notified');
     console.log('=== Process Completed ===');

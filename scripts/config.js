@@ -10,4 +10,8 @@ module.exports = {
     REPO: process.env.TECH_BLOG_REPO || 'oliveyoung-tech-blog',
   },
   POST_PATTERN: /(\d{4}-\d{2}-\d{2})[-\/]([^\/\s?#]+)/,
+  METRICS: {
+    LABEL: 'metrics',
+    TITLE_PREFIX: '[Metrics]',
+  },
 };
