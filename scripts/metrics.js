@@ -39,7 +39,8 @@ async function recordMetrics(techBlogGithub, eventData) {
         repo: REPO,
         title: expectedTitle,
         body: `# 📊 ${yearMonth} 댓글 알림 통계\n\n이 Issue는 자동으로 생성되었습니다. 각 댓글 알림 이벤트가 댓글로 기록됩니다.\n\n---\n\n> 집계는 \`<!-- metrics-json:... -->\` 주석을 파싱하여 수행할 수 있습니다.`,
-        labels: [LABEL]
+        labels: [LABEL],
+        assignees: ['oy-ladygain']
       });
       issueNumber = newIssue.number;
       console.log(`📊 Created new metrics issue #${issueNumber}`);
