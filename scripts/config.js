@@ -1,6 +1,6 @@
 module.exports = {
   MODERATORS: ['oy-ladygain', 'oy-0nlyoung7'],
-  GEMINI_MODEL: 'gemini-2.0-flash-exp',
+  GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
   TOXICITY: {
     MODERATION_REQUIRED: 3,
     AUTO_DELETE: 4,
